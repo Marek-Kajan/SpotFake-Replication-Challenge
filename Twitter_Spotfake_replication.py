@@ -52,6 +52,41 @@ def load_train_data(dir, image_dir):
     print(c)
     return X_text, X_image, labels
 
+def load_test_dataset(dir, image_dir):
+    data = pd.read_csv(dir + "test_posts.txt", sep='\t')
+    data = shuffle(data)
+    files = pd.DataFrame(os.listdir(image_dir))
+    files = files[0].str.split('.', expand=True)
+    files.columns = ['name', 'ext']
+    X_text = []
+    X_image = []
+    labels = []
+    c = 0
+
+    for id in data.index:
+        for image in data['image_id'][id].split(','):
+            try:
+                ext = files[files['name'] == image]['ext']
+                if ext.empty:
+                    raise FileNotFoundError
+                extension = ext.values[0]
+                if extension == 'txt':
+                    raise OSError
+                img = ski.io.imread(image_dir + "/" + image + "." + extension)
+                if extension == 'gif':
+                    #take the 1st frame of gif
+                    img = img[0]
+                img = ski.transform.resize(img, (244, 244, 3), order=3)
+                img = img.transpose(2, 0, 1)
+                X_text.append(data['post_text'][id])
+                X_image.append(img)
+                labels.append(label_to_id[data['label'][id]])
+            except (FileNotFoundError, OSError):
+                c += 1
+                continue
+    print(c)
+    return X_text, X_image, labels
+
 def textual_feature_extractor(X_text):
 
     X_text_encodings = []
@@ -161,6 +196,7 @@ X_text = np.load("./data/twitter/X_text.npy", allow_pickle=True)
 X_images = np.load("./data/twitter/X_images.npy")
 labels = np.load("./data/twitter/labels.npy")
 
+#randomize dataset
 index = np.random.permutation(len(labels))
 X_text = X_text[index]
 X_images = X_images[index]
@@ -169,6 +205,24 @@ labels = labels[index]
 labels = torch.tensor(labels, dtype=torch.float32)
 labels = torch.unsqueeze(labels, 1)
 
+"""
+X_text, X_images, labels = load_test_dataset("./data/twitter/", "./data/twitter/Mediaeval2016_TestSet_Images")
+np.save("./data/twitter/X_text_test", X_text)
+np.save("./data/twitter/X_images_test", X_images)
+np.save("./data/twitter/labels_test", labels)
+"""
+
+X_text_test = np.load("./data/twitter/X_text_test.npy", allow_pickle=True)
+X_images_test = np.load("./data/twitter/X_images_test.npy")
+labels_test = np.load("./data/twitter/labels_test.npy")
+
+labels_test = torch.tensor(labels_test, dtype=torch.float32)
+labels_test = torch.unsqueeze(labels_test, 1)
+
+X_text_encodings_test = textual_feature_extractor(X_text_test)
+X_image_encodings_test = visual_feature_extractor(X_images_test)
+
+
 X_text_encodings = textual_feature_extractor(X_text)
 X_image_encodings = visual_feature_extractor(X_images)
 
@@ -176,11 +230,14 @@ clf = Classifier()
 criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(clf.parameters(), lr=0.0005)
 
+best_val_acc = 0.0
+patience = 3
+c = 0
 print("Starting training")
 for epoch in range(10):
     running_loss = 0.0
     for i in range(0, len(labels), 256):
-
+        clf.train()
         optimizer.zero_grad()
 
         outputs = clf(X_text_encodings[i:i+256], X_image_encodings[i:i+256])
@@ -192,75 +249,39 @@ for epoch in range(10):
         print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 256:.3f}')
         running_loss = 0.0
 
+    clf.eval()
+    with torch.no_grad():
+        val_outputs = clf(X_text_encodings_test, X_image_encodings_test)
+        predictions = torch.round(val_outputs)
+        val_acc = accuracy_score(predictions, labels_test)
+    if val_acc > best_val_acc:
+        best_val_acc = val_acc
+        c = 0
+    else:
+        c += 1
+        if c >= patience:
+            print("Early stop, best validation accuracy: " + str(best_val_acc))
+            break
+
+
 torch.save(clf.state_dict(), "./data/twitter/model")
 
 
-def load_test_dataset(dir, image_dir):
-    data = pd.read_csv(dir + "test_posts.txt", sep='\t')
-    data = shuffle(data)
-    files = pd.DataFrame(os.listdir(image_dir))
-    files = files[0].str.split('.', expand=True)
-    files.columns = ['name', 'ext']
-    X_text = []
-    X_image = []
-    labels = []
-    c = 0
-
-    for id in data.index:
-        for image in data['image_id'][id].split(','):
-            try:
-                ext = files[files['name'] == image]['ext']
-                if ext.empty:
-                    raise FileNotFoundError
-                extension = ext.values[0]
-                if extension == 'txt':
-                    raise OSError
-                img = ski.io.imread(image_dir + "/" + image + "." + extension)
-                if extension == 'gif':
-                    #take the 1st frame of gif
-                    img = img[0]
-                img = ski.transform.resize(img, (244, 244, 3), order=3)
-                img = img.transpose(2, 0, 1)
-                X_text.append(data['post_text'][id])
-                X_image.append(img)
-                labels.append(label_to_id[data['label'][id]])
-            except (FileNotFoundError, OSError):
-                c += 1
-                continue
-    print(c)
-    return X_text, X_image, labels
-
 """Test model"""
-"""
-X_text, X_images, labels = load_test_dataset("./data/twitter/", "./data/twitter/Mediaeval2016_TestSet_Images")
-np.save("./data/twitter/X_text_test", X_text)
-np.save("./data/twitter/X_images_test", X_images)
-np.save("./data/twitter/labels_test", labels)
-"""
-
-X_text = np.load("./data/twitter/X_text_test.npy", allow_pickle=True)
-X_images = np.load("./data/twitter/X_images_test.npy")
-labels = np.load("./data/twitter/labels_test.npy")
-
-labels = torch.tensor(labels, dtype=torch.float32)
-labels = torch.unsqueeze(labels, 1)
-
-X_text_encodings = textual_feature_extractor(X_text)
-X_image_encodings = visual_feature_extractor(X_images)
 
 clf = Classifier()
 clf.load_state_dict(torch.load("./data/twitter/model"))
 
 with torch.no_grad():
     clf.eval()
-    outputs = clf(X_text_encodings, X_image_encodings)
+    outputs = clf(X_text_encodings_test, X_image_encodings_test)
     predictions = torch.round(outputs)
 
 """Evaluate model"""
-acc = accuracy_score(predictions.detach().numpy(), labels)
-recall = recall_score(predictions.detach().numpy(), labels)
-precision = precision_score (predictions.detach().numpy(), labels)
-f1 = f1_score(predictions.detach().numpy(), labels)
+acc = accuracy_score(predictions.detach().numpy(), labels_test)
+recall = recall_score(predictions.detach().numpy(), labels_test)
+precision = precision_score(predictions.detach().numpy(), labels_test)
+f1 = f1_score(predictions.detach().numpy(), labels_test)
 
 print('Accuracy: ' + str(acc))
 print('Recall: ' + str(recall))

@@ -185,12 +185,29 @@ labels = torch.unsqueeze(labels, 1)
 X_text_encodings = textual_feature_extractor(X_text)
 X_image_encodings = visual_feature_extractor(X_images)
 
+#X_text_test, X_images_test, labels_test = load_data("./data/weibo/")
+#np.save("./data/weibo/X_text_test", X_text)
+#np.save("./data/weibo/X_images_test", X_images)
+#np.save("./data/weibo/labels_test", labels)
 
+
+X_text_test = np.load("./data/weibo/X_text_test.npy")
+X_images_test = np.load("./data/weibo/X_images_test.npy")
+labels_test = np.load("./data/weibo/labels_test.npy")
+
+labels_test = torch.tensor(labels_test, dtype=torch.float32)
+labels_test = torch.unsqueeze(labels_test, 1)
+
+X_text_encodings_test = textual_feature_extractor(X_text_test)
+X_image_encodings_test = visual_feature_extractor(X_images_test)
 
 clf = Classifier()
 criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(clf.parameters(), lr=0.001)
 
+best_val_acc = 0.0
+patience = 3
+c = 0
 print("Starting training")
 for epoch in range(10):
     running_loss = 0.0
@@ -207,36 +224,36 @@ for epoch in range(10):
         print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 256:.3f}')
         running_loss = 0.0
 
+    clf.eval()
+    with torch.no_grad():
+        val_outputs = clf(X_text_encodings_test, X_image_encodings_test)
+        predictions = torch.round(val_outputs)
+        val_acc = accuracy_score(predictions, labels_test)
+    if val_acc > best_val_acc:
+        best_val_acc = val_acc
+        c = 0
+    else:
+        c += 1
+        if c >= patience:
+            print("Early stop, best validation accuracy: " + str(best_val_acc))
+            break
+
 torch.save(clf.state_dict(), "./model")
 
 """Test model"""
-#X_text, X_images, labels= load_data("./data/weibo/")
-#np.save("./data/weibo/X_text_test", X_text)
-#np.save("./data/weibo/X_images_test", X_images)
-#np.save("./data/weibo/labels_test", labels)
 
-
-X_text = np.load("./data/weibo/X_text_test.npy")
-X_images = np.load("./data/weibo/X_images_test.npy")
-labels = np.load("./data/weibo/labels_test.npy")
-
-labels = torch.tensor(labels, dtype=torch.float32)
-labels = torch.unsqueeze(labels, 1)
-
-X_text_encodings = textual_feature_extractor(X_text)
-X_image_encodings = visual_feature_extractor(X_images)
 
 clf = Classifier()
 clf.load_state_dict(torch.load("./model"))
 with torch.no_grad():
     clf.eval()
-    outputs = clf(X_text_encodings, X_image_encodings)
+    outputs = clf(X_text_encodings_test, X_image_encodings_test)
     predictions = torch.round(outputs)
 """Evaluate"""
-acc = accuracy_score(predictions.detach().numpy(), labels)
-recall = recall_score(predictions.detach().numpy(), labels)
-precision = precision_score (predictions.detach().numpy(), labels)
-f1 = f1_score(predictions.detach().numpy(), labels)
+acc = accuracy_score(predictions.detach().numpy(), labels_test)
+recall = recall_score(predictions.detach().numpy(), labels_test)
+precision = precision_score (predictions.detach().numpy(), labels_test)
+f1 = f1_score(predictions.detach().numpy(), labels_test)
 
 print('Accuracy: ' + str(acc))
 print('Recall: ' + str(recall))
