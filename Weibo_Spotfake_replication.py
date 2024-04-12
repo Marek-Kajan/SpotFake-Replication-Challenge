@@ -163,12 +163,12 @@ class Classifier(nn.Module):
 
         return out
 
-
-#X_text, X_images, labels= load_data("./data/weibo/")
-#np.save("./data/weibo/X_text", X_text)
-#np.save("./data/weibo/X_images", X_images)
-#np.save("./data/weibo/labels", labels)
-
+"""
+X_text, X_images, labels= load_data("./data/weibo/")
+np.save("./data/weibo/X_text", X_text)
+np.save("./data/weibo/X_images", X_images)
+np.save("./data/weibo/labels", labels)
+"""
 
 X_text = np.load("./data/weibo/X_text.npy")
 X_images = np.load("./data/weibo/X_images.npy")
@@ -185,11 +185,12 @@ labels = torch.unsqueeze(labels, 1)
 X_text_encodings = textual_feature_extractor(X_text)
 X_image_encodings = visual_feature_extractor(X_images)
 
-#X_text_test, X_images_test, labels_test = load_data("./data/weibo/")
-#np.save("./data/weibo/X_text_test", X_text)
-#np.save("./data/weibo/X_images_test", X_images)
-#np.save("./data/weibo/labels_test", labels)
-
+"""
+X_text_test, X_images_test, labels_test = load_data("./data/weibo/")
+np.save("./data/weibo/X_text_test", X_text)
+np.save("./data/weibo/X_images_test", X_images)
+np.save("./data/weibo/labels_test", labels)
+"""
 
 X_text_test = np.load("./data/weibo/X_text_test.npy")
 X_images_test = np.load("./data/weibo/X_images_test.npy")
@@ -206,7 +207,7 @@ criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(clf.parameters(), lr=0.001)
 
 best_val_acc = 0.0
-patience = 3
+patience = 1
 c = 0
 print("Starting training")
 for epoch in range(10):
@@ -231,6 +232,7 @@ for epoch in range(10):
         val_acc = accuracy_score(predictions, labels_test)
     if val_acc > best_val_acc:
         best_val_acc = val_acc
+        torch.save(clf.state_dict(), "./data/weibo/model")
         c = 0
     else:
         c += 1
@@ -238,13 +240,12 @@ for epoch in range(10):
             print("Early stop, best validation accuracy: " + str(best_val_acc))
             break
 
-torch.save(clf.state_dict(), "./model")
 
 """Test model"""
 
 
 clf = Classifier()
-clf.load_state_dict(torch.load("./model"))
+clf.load_state_dict(torch.load("./data/weibo/model"))
 with torch.no_grad():
     clf.eval()
     outputs = clf(X_text_encodings_test, X_image_encodings_test)

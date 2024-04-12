@@ -153,6 +153,7 @@ class Classifier(nn.Module):
         self.reluImage2 = nn.ReLU()
         self.fcImage2 = nn.Linear(2742, 32)
         self.imgDropout2 = nn.Dropout(p=0.4)
+        self.concatDropout = nn.Dropout(p=0.4)
         self.reluOut1 = nn.ReLU()
         self.fcOut1 = nn.Linear(64, 35)
         self.outDropout = nn.Dropout(p=0.4)
@@ -166,17 +167,18 @@ class Classifier(nn.Module):
         text = self.textDropout1(text)
         text = self.reluText2(text)
         text = self.fcText2(text)
-        text = self.textDropout2(text)
+        #text = self.textDropout2(text)
 
         img = self.reluImage1(img)
         img = self.fcImage1(img)
         img = self.imgDropout1(img)
         img = self.reluImage2(img)
         img = self.fcImage2(img)
-        img = self.imgDropout2(img)
+        #img = self.imgDropout2(img)
 
         img = torch.squeeze(img, 1)
         concat = torch.cat((text, img), 1)
+        concat = self.concatDropout(concat)
 
         out = self.reluOut1(concat)
         out = self.fcOut1(out)
@@ -186,12 +188,12 @@ class Classifier(nn.Module):
         out = self.sigmoid(out)
 
         return out
-
-#X_text, X_images, labels= load_data("./data/twitter/", "./data/twitter/Mediaeval2015_DevSet_Images")
-#np.save("./data/twitter/X_text", X_text)
-#np.save("./data/twitter/X_images", X_images)
-#np.save("./data/twitter/labels", labels)
-
+"""
+X_text, X_images, labels= load_data("./data/twitter/", "./data/twitter/Mediaeval2015_DevSet_Images")
+np.save("./data/twitter/X_text", X_text)
+np.save("./data/twitter/X_images", X_images)
+np.save("./data/twitter/labels", labels)
+"""
 X_text = np.load("./data/twitter/X_text.npy", allow_pickle=True)
 X_images = np.load("./data/twitter/X_images.npy")
 labels = np.load("./data/twitter/labels.npy")
@@ -256,15 +258,13 @@ for epoch in range(10):
         val_acc = accuracy_score(predictions, labels_test)
     if val_acc > best_val_acc:
         best_val_acc = val_acc
+        torch.save(clf.state_dict(), "./data/twitter/model")
         c = 0
     else:
         c += 1
         if c >= patience:
             print("Early stop, best validation accuracy: " + str(best_val_acc))
             break
-
-
-torch.save(clf.state_dict(), "./data/twitter/model")
 
 
 """Test model"""
