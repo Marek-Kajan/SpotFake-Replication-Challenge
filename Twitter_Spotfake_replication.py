@@ -111,7 +111,7 @@ def textual_feature_extractor(X_text):
 
         with torch.no_grad():
             encoded_layers = bert(tokens_tensor, segments_tensors)
-        X_text_encodings.append(encoded_layers.hidden_states[-2][0][0])
+        X_text_encodings.append(encoded_layers.hidden_states[-1][0][0])
 
     return torch.stack(X_text_encodings)
 
@@ -133,8 +133,8 @@ def visual_feature_extractor(X_images):
 
         with torch.no_grad():
             layer.register_forward_hook(getActivation("secondLast"))
-            _ = vgg19(image_tensor)
-            image_encodings.append(activation["secondLast"])
+            outputs = vgg19(image_tensor)
+            image_encodings.append(outputs)
     return torch.stack(image_encodings)
 
 
@@ -148,7 +148,7 @@ class Classifier(nn.Module):
         self.fcText2 = nn.Linear(768, 32)
         self.textDropout2 = nn.Dropout(p=0.4)
         self.reluImage1 = nn.ReLU()
-        self.fcImage1 = nn.Linear(4096, 2742)
+        self.fcImage1 = nn.Linear(1000, 2742)
         self.imgDropout1 = nn.Dropout(p=0.4)
         self.reluImage2 = nn.ReLU()
         self.fcImage2 = nn.Linear(2742, 32)
@@ -258,6 +258,7 @@ for epoch in range(10):
         val_acc = accuracy_score(predictions, labels_test)
     if val_acc > best_val_acc:
         best_val_acc = val_acc
+        print(val_acc)
         torch.save(clf.state_dict(), "./data/twitter/model")
         c = 0
     else:
